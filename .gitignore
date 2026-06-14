@@ -1,0 +1,10 @@
+build/
+dist/
+.tmp-release-check/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+src/*.egg-info/
+phantom_touch_bridge.toml

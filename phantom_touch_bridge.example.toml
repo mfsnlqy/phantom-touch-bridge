@@ -1,0 +1,21 @@
+# Copy this file to `phantom_touch_bridge.toml` and edit values as needed.
+
+[bridge]
+host = "127.0.0.1"
+port = 8765
+
+[backend]
+type = "intiface"
+server_url = "ws://127.0.0.1:12345"
+default_device_name = ""
+default_device_address = ""
+# Advanced custom-backend overrides. Leave empty unless you are adapting
+# a known compatible protocol variant that uses different characteristic UUIDs.
+notify_uuid = ""
+write_uuid = ""
+error_detail = "simple"
+keep_connected = true
+
+[logging]
+level = "INFO"
+verbose = false
