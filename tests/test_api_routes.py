@@ -163,7 +163,7 @@ def test_health_routes_and_status_use_http_contract():
     assert healthz_response.json() == {
         "ok": True,
         "name": "phantom-touch-bridge",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "backend": "custom",
     }
     assert health_response.status_code == 200

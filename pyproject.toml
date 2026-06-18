@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "phantom-touch-bridge"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local bridge for Intiface-first device control with a custom backend compatibility path."
 readme = "README.md"
 requires-python = ">=3.12"
