@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 
@@ -79,7 +79,7 @@ def test_bridge_error_to_error_result_omits_details_by_default():
         ErrorCode.CONNECT_FAILED,
         "连接失败。",
         backend="custom",
-        details={"address": "AA:BB:CC:DD:EE:FF"},
+        details={"address": "00:11:22:33:44:55"},
     )
 
     result = error.to_error_result()
@@ -321,3 +321,4 @@ def test_bridge_service_preserves_backend_normalized_error_but_hides_details_in_
         }
     else:
         raise AssertionError("expected BridgeError from service.connect()")
+

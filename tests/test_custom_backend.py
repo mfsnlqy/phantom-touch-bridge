@@ -36,12 +36,12 @@ class FakeBleakClient:
 def test_list_devices_only_marks_supported_candidate(monkeypatch):
     async def fake_discover(timeout=8.0, return_adv=True):
         return {
-            "AA:BB:CC:DD:EE:FF": (
-                SimpleNamespace(name="Demo Device", address="AA:BB:CC:DD:EE:FF"),
+            "00:11:22:33:44:55": (
+                SimpleNamespace(name="Demo Device", address="00:11:22:33:44:55"),
                 SimpleNamespace(local_name="Demo Device"),
             ),
-            "11:22:33:44:55:66": (
-                SimpleNamespace(name="Other Device", address="11:22:33:44:55:66"),
+            "00:11:22:33:44:66": (
+                SimpleNamespace(name="Other Device", address="00:11:22:33:44:66"),
                 SimpleNamespace(local_name="Other Device"),
             ),
         }
@@ -62,16 +62,16 @@ def test_list_devices_only_marks_supported_candidate(monkeypatch):
     devices = asyncio.run(backend.list_devices())
 
     assert [(item.name, item.capabilities) for item in devices] == [
-        ("Other Device", []),
         ("Demo Device", ["vibrate"]),
+        ("Other Device", []),
     ]
 
 
 def test_set_strength_rejects_bool(monkeypatch):
     async def fake_discover(timeout=8.0, return_adv=True):
         return {
-            "AA:BB:CC:DD:EE:FF": (
-                SimpleNamespace(name="Demo Device", address="AA:BB:CC:DD:EE:FF"),
+            "00:11:22:33:44:55": (
+                SimpleNamespace(name="Demo Device", address="00:11:22:33:44:55"),
                 SimpleNamespace(local_name="Demo Device"),
             ),
         }
@@ -126,8 +126,8 @@ def test_failed_connect_clears_selected_device_state(monkeypatch):
 
     async def fake_discover(timeout=8.0, return_adv=True):
         return {
-            "AA:BB:CC:DD:EE:FF": (
-                SimpleNamespace(name="Demo Device", address="AA:BB:CC:DD:EE:FF"),
+            "00:11:22:33:44:55": (
+                SimpleNamespace(name="Demo Device", address="00:11:22:33:44:55"),
                 SimpleNamespace(local_name="Demo Device"),
             ),
         }
@@ -167,8 +167,8 @@ def test_failed_connect_clears_selected_device_state(monkeypatch):
 def test_connect_address_failure_does_not_fallback_to_name_match(monkeypatch):
     async def fake_discover(timeout=8.0, return_adv=True):
         return {
-            "11:22:33:44:55:66": (
-                SimpleNamespace(name="Demo Device", address="11:22:33:44:55:66"),
+            "00:11:22:33:44:66": (
+                SimpleNamespace(name="Demo Device", address="00:11:22:33:44:66"),
                 SimpleNamespace(local_name="Demo Device"),
             ),
         }
@@ -194,10 +194,10 @@ def test_connect_address_failure_does_not_fallback_to_name_match(monkeypatch):
     backend = CustomBackend(settings)
 
     with pytest.raises(BridgeError) as exc_info:
-        asyncio.run(backend.connect("AA:BB:CC:DD:EE:FF"))
+        asyncio.run(backend.connect("00:11:22:33:44:55"))
 
     assert exc_info.value.code == ErrorCode.DEVICE_NOT_FOUND
-    assert 'AA:BB:CC:DD:EE:FF' in str(exc_info.value)
+    assert '00:11:22:33:44:55' in str(exc_info.value)
     assert backend.device_name is None
     assert backend.device_address is None
 
@@ -205,8 +205,8 @@ def test_connect_address_failure_does_not_fallback_to_name_match(monkeypatch):
 def test_custom_backend_happy_path_connect_status_set_strength_stop(monkeypatch):
     async def fake_discover(timeout=8.0, return_adv=True):
         return {
-            "AA:BB:CC:DD:EE:FF": (
-                SimpleNamespace(name="Demo Device", address="AA:BB:CC:DD:EE:FF"),
+            "00:11:22:33:44:55": (
+                SimpleNamespace(name="Demo Device", address="00:11:22:33:44:55"),
                 SimpleNamespace(local_name="Demo Device"),
             ),
         }
@@ -241,10 +241,10 @@ def test_custom_backend_happy_path_connect_status_set_strength_stop(monkeypatch)
     status_after_stop = asyncio.run(backend.status())
 
     assert connect_result.action == "connect"
-    assert connect_result.device_id == "AA:BB:CC:DD:EE:FF"
+    assert connect_result.device_id == "00:11:22:33:44:55"
     assert status_after_connect["connected"] is True
     assert status_after_connect["device_name"] == "Demo Device"
-    assert status_after_connect["device_address"] == "AA:BB:CC:DD:EE:FF"
+    assert status_after_connect["device_address"] == "00:11:22:33:44:55"
 
     assert set_result.action == "set_strength"
     assert set_result.value == 42
@@ -267,8 +267,8 @@ def test_custom_backend_happy_path_connect_status_set_strength_stop(monkeypatch)
 def test_custom_backend_respects_custom_uuid_overrides(monkeypatch):
     async def fake_discover(timeout=8.0, return_adv=True):
         return {
-            "AA:BB:CC:DD:EE:FF": (
-                SimpleNamespace(name="Demo Device", address="AA:BB:CC:DD:EE:FF"),
+            "00:11:22:33:44:55": (
+                SimpleNamespace(name="Demo Device", address="00:11:22:33:44:55"),
                 SimpleNamespace(local_name="Demo Device"),
             ),
         }
@@ -325,3 +325,4 @@ def test_custom_backend_health_reports_uuid_override_state():
         "keep_connected": True,
         "custom_uuid_overrides": True,
     }
+

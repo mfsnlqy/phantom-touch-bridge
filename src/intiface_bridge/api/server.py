@@ -106,7 +106,7 @@ def run_server(
 
 
 def _status_code_for_error(code: ErrorCode) -> int:
-    if code in {ErrorCode.INVALID_STRENGTH}:
+    if code in {ErrorCode.INVALID_REQUEST, ErrorCode.INVALID_STRENGTH}:
         return 400
     if code in {ErrorCode.DEVICE_NOT_FOUND}:
         return 404
@@ -125,4 +125,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

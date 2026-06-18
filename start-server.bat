@@ -1,172 +1,224 @@
 @echo off
 setlocal EnableExtensions
 
-set "SCRIPT_DIR=%~dp0"
-set "EXE_PATH=%SCRIPT_DIR%phantom-touch-bridge.exe"
-set "CONFIG_PATH=%SCRIPT_DIR%phantom_touch_bridge.toml"
-set "EXAMPLE_CONFIG=%SCRIPT_DIR%phantom_touch_bridge.example.toml"
-set "SRC_DIR=%SCRIPT_DIR%src"
+cd /d "%~dp0"
+title phantom-touch-bridge
 
-echo [phantom-touch-bridge] Starting local HTTP bridge...
-echo [phantom-touch-bridge] Default HTTP URL: http://127.0.0.1:8765
-echo [phantom-touch-bridge] Start Intiface Central first if you plan to use the Intiface backend.
-echo [phantom-touch-bridge] Source mode fallback requires Python 3.12.
+set "BACKEND_TYPE="
+set "BACKEND_DEVICE_NAME="
+set "HEART_RATE_ENABLED=false"
+set "HEART_RATE_DEVICE_NAME="
+set "HEART_RATE_DEVICE_ADDRESS="
+set "PYTHON_CMD="
+set "LAUNCH_MODE="
+set "LAUNCH_CMD="
+set "REPO_SRC=%~dp0src"
 
-if not exist "%CONFIG_PATH%" (
-  if exist "%EXAMPLE_CONFIG%" (
-    copy /Y "%EXAMPLE_CONFIG%" "%CONFIG_PATH%" >nul
-    echo [phantom-touch-bridge] Created "%CONFIG_PATH%" from the example config.
-  ) else (
-    echo [phantom-touch-bridge] WARNING: No config file was found. Built-in defaults will be used.
-  )
-)
-
-call :select_backend
-if "%STARTUP_CANCELLED%"=="1" (
-  set "EXIT_CODE=0"
-  goto :finish
+:select_backend
+cls
+echo ========================================
+echo phantom-touch-bridge
+echo ========================================
+echo.
+echo Select control backend:
+echo   [1] Intiface
+echo   [2] custom
+echo   [Q] Quit
+echo.
+choice /c 12Q /n /m "Choice: "
+if errorlevel 3 goto :quit
+if errorlevel 2 (
+    set "BACKEND_TYPE=custom"
+    goto :prompt_backend_target
 )
 if errorlevel 1 (
-  set "EXIT_CODE=1"
-  goto :finish
+    set "BACKEND_TYPE=intiface"
+    set "BACKEND_DEVICE_NAME="
+    goto :select_heart_rate
+)
+goto :select_backend
+
+:prompt_backend_target
+cls
+echo ========================================
+echo Custom Device Target
+echo ========================================
+echo.
+echo Enter a device name keyword for custom mode.
+echo Partial names are allowed.
+echo.
+set "BACKEND_DEVICE_NAME="
+set "BACKEND_DEVICE_NAME_CHECK="
+set /p "BACKEND_DEVICE_NAME=Custom device name keyword: "
+for /f "tokens=* delims= " %%A in ("%BACKEND_DEVICE_NAME%") do set "BACKEND_DEVICE_NAME_CHECK=%%A"
+if defined BACKEND_DEVICE_NAME_CHECK goto :select_heart_rate
+echo.
+echo Please provide a device name keyword for custom mode.
+echo.
+pause
+goto :prompt_backend_target
+
+:select_heart_rate
+cls
+echo ========================================
+echo phantom-touch-bridge
+echo ========================================
+echo.
+echo Heart rate input:
+echo   [1] Disabled
+echo   [2] Enabled
+echo   [Q] Quit
+echo.
+choice /c 12Q /n /m "Choice: "
+if errorlevel 3 goto :quit
+if errorlevel 2 (
+    set "HEART_RATE_ENABLED=true"
+    goto :prompt_heart_rate_target
+)
+if errorlevel 1 (
+    set "HEART_RATE_ENABLED=false"
+    set "HEART_RATE_DEVICE_NAME="
+    set "HEART_RATE_DEVICE_ADDRESS="
+    goto :resolve_launcher
+)
+goto :select_heart_rate
+
+:prompt_heart_rate_target
+cls
+echo ========================================
+echo Heart Rate Target
+echo ========================================
+echo.
+echo Enter a band name keyword for heart rate input.
+echo.
+set "HEART_RATE_DEVICE_NAME="
+set "HEART_RATE_DEVICE_ADDRESS="
+set "HEART_RATE_DEVICE_NAME_CHECK="
+set /p "HEART_RATE_DEVICE_NAME=Band name keyword: "
+for /f "tokens=* delims= " %%A in ("%HEART_RATE_DEVICE_NAME%") do set "HEART_RATE_DEVICE_NAME_CHECK=%%A"
+if defined HEART_RATE_DEVICE_NAME_CHECK goto :resolve_launcher
+set "HEART_RATE_DEVICE_ADDRESS="
+echo.
+echo Please provide a band name keyword.
+echo.
+pause
+goto :prompt_heart_rate_target
+
+:resolve_launcher
+if exist ".\phantom-touch-bridge.exe" (
+    set "LAUNCH_MODE=exe"
+    set "LAUNCH_CMD=".\phantom-touch-bridge.exe""
+    goto :launch
 )
 
-if exist "%EXE_PATH%" (
-  echo [phantom-touch-bridge] Launching packaged executable with "%SELECTED_BACKEND%" backend...
-  if defined CUSTOM_DEVICE_KEYWORD (
-    echo [phantom-touch-bridge] Custom mode will try device name keyword: "%CUSTOM_DEVICE_KEYWORD%"
-  )
-  "%EXE_PATH%" --config "%CONFIG_PATH%" serve
-  set "EXIT_CODE=%ERRORLEVEL%"
-  goto :finish
+if exist ".\intiface-bridge.exe" (
+    set "LAUNCH_MODE=exe"
+    set "LAUNCH_CMD=".\intiface-bridge.exe""
+    goto :launch
+)
+
+if exist ".\intiface_bridge.exe" (
+    set "LAUNCH_MODE=exe"
+    set "LAUNCH_CMD=".\intiface_bridge.exe""
+    goto :launch
+)
+
+if exist ".\.venv\Scripts\python.exe" (
+    set "PYTHON_CMD=".\.venv\Scripts\python.exe""
+    set "LAUNCH_MODE=python"
+    goto :launch
 )
 
 where py >nul 2>nul
-if errorlevel 1 (
-  echo [phantom-touch-bridge] ERROR: phantom-touch-bridge.exe was not found.
-  echo [phantom-touch-bridge] ERROR: Python launcher "py" is also unavailable.
-  set "EXIT_CODE=1"
-  goto :finish
+if not errorlevel 1 (
+    set "PYTHON_CMD=py -3"
+    set "LAUNCH_MODE=python"
+    goto :launch
 )
 
-if exist "%SRC_DIR%" (
-  set "PYTHONPATH=%SRC_DIR%;%PYTHONPATH%"
+where python >nul 2>nul
+if not errorlevel 1 (
+    set "PYTHON_CMD=python"
+    set "LAUNCH_MODE=python"
+    goto :launch
 )
 
-echo [phantom-touch-bridge] Packaged executable not found. Falling back to Python source mode with "%SELECTED_BACKEND%" backend...
-if defined CUSTOM_DEVICE_KEYWORD (
-  echo [phantom-touch-bridge] Custom mode will try device name keyword: "%CUSTOM_DEVICE_KEYWORD%"
-)
-py -3.12 -m intiface_bridge --config "%CONFIG_PATH%" serve
-set "EXIT_CODE=%ERRORLEVEL%"
-goto :finish
-
-:select_backend
 echo.
-echo [phantom-touch-bridge] Choose a backend:
-echo   [1] Intiface  - recommended if Intiface Central can see your device
-echo   [2] Custom    - try name-based matching for devices not supported by Intiface
-echo   [Q] Quit
-choice /C 12Q /N /M "Select backend [1/2/Q]: "
+echo Python was not found. Install Python or create .venv first.
+echo.
+pause
+goto :quit
 
-if errorlevel 3 (
-  echo [phantom-touch-bridge] Startup cancelled by user.
-  set "STARTUP_CANCELLED=1"
-  exit /b 0
+:launch
+cls
+echo ========================================
+echo Starting phantom-touch-bridge
+echo ========================================
+echo.
+echo Current mode:
+echo - Control backend: %BACKEND_TYPE%
+if defined BACKEND_DEVICE_NAME (
+    call echo - Control device keyword: %%BACKEND_DEVICE_NAME%%
 )
-if errorlevel 2 goto :configure_custom
-if errorlevel 1 goto :configure_intiface
-
-echo [phantom-touch-bridge] Invalid choice.
-exit /b 1
-
-:configure_intiface
-set "SELECTED_BACKEND=intiface"
-set "INTIFACE_BRIDGE_BACKEND_TYPE=intiface"
-set "INTIFACE_BRIDGE_BACKEND_DEFAULT_DEVICE_NAME="
-set "INTIFACE_BRIDGE_BACKEND_DEFAULT_DEVICE_ADDRESS="
-set "CUSTOM_DEVICE_KEYWORD="
-echo [phantom-touch-bridge] Intiface mode selected.
-echo [phantom-touch-bridge] Make sure Intiface Central is running before you try /health or connect.
-exit /b 0
-
-:configure_custom
-set "SELECTED_BACKEND=custom"
-set "INTIFACE_BRIDGE_BACKEND_TYPE=custom"
-set "INTIFACE_BRIDGE_BACKEND_DEFAULT_DEVICE_ADDRESS="
-set "CUSTOM_DEVICE_KEYWORD="
-set "CONFIG_DEFAULT_DEVICE_NAME="
-set "CONFIG_DEFAULT_DEVICE_ADDRESS="
-call :load_custom_target_from_config
-echo [phantom-touch-bridge] Custom mode selected.
-echo [phantom-touch-bridge] You can usually start with a partial device name. MAC address is not required.
-
-:prompt_custom_name
-set /P "CUSTOM_DEVICE_KEYWORD=Enter a device name keyword for custom mode: "
-if not "%CUSTOM_DEVICE_KEYWORD%"=="" goto :set_custom_name
-
-echo [phantom-touch-bridge] A device name keyword is recommended for custom mode.
-set "CUSTOM_NAME_DECISION="
-set /P "CUSTOM_NAME_DECISION=Press R to re-enter, or type C to continue without a temporary override [R/C]: "
-if /I "%CUSTOM_NAME_DECISION%"=="C" goto :continue_without_custom_name
-goto :prompt_custom_name
-
-:set_custom_name
-set "INTIFACE_BRIDGE_BACKEND_DEFAULT_DEVICE_NAME=%CUSTOM_DEVICE_KEYWORD%"
-echo [phantom-touch-bridge] Custom mode will use device name keyword: "%CUSTOM_DEVICE_KEYWORD%"
-exit /b 0
-
-:continue_without_custom_name
-set "INTIFACE_BRIDGE_BACKEND_DEFAULT_DEVICE_NAME="
-set "CUSTOM_DEVICE_KEYWORD="
-if defined CONFIG_DEFAULT_DEVICE_NAME goto :continue_with_saved_custom_target
-if defined CONFIG_DEFAULT_DEVICE_ADDRESS goto :continue_with_saved_custom_target
-echo [phantom-touch-bridge] ERROR: No custom device target was provided.
-echo [phantom-touch-bridge] ERROR: Enter a device name keyword, or save default_device_name/default_device_address in phantom_touch_bridge.toml.
-choice /C RQ /N /M "Press R to re-enter a device name keyword, or Q to cancel [R/Q]: "
-if errorlevel 2 (
-  echo [phantom-touch-bridge] Startup cancelled by user.
-  set "STARTUP_CANCELLED=1"
-  exit /b 0
-)
-goto :prompt_custom_name
-
-:continue_with_saved_custom_target
-echo [phantom-touch-bridge] Continuing without a temporary custom device name.
-if defined CONFIG_DEFAULT_DEVICE_NAME (
-  echo [phantom-touch-bridge] Using saved custom device name from config: "%CONFIG_DEFAULT_DEVICE_NAME%"
+if /i "%HEART_RATE_ENABLED%"=="true" (
+    echo - Heart rate input: enabled
+    if defined HEART_RATE_DEVICE_NAME (
+        call echo - Band name keyword: %%HEART_RATE_DEVICE_NAME%%
+    ) else (
+        echo - Band name keyword: ^<empty^>
+    )
 ) else (
-  echo [phantom-touch-bridge] Using saved custom device address from config.
+    echo - Heart rate input: disabled
 )
+echo.
+echo The service is starting in this window.
+echo Press Ctrl+C here if you want to stop it later.
+echo.
+
+if defined INTIFACE_BRIDGE_START_SERVER_DRY_RUN (
+    echo [dry-run] INTIFACE_BRIDGE_BACKEND_TYPE=%BACKEND_TYPE%
+    call echo [dry-run] INTIFACE_BRIDGE_BACKEND_DEFAULT_DEVICE_NAME=%%BACKEND_DEVICE_NAME%%
+    echo [dry-run] INTIFACE_BRIDGE_HEART_RATE_ENABLED=%HEART_RATE_ENABLED%
+    call echo [dry-run] INTIFACE_BRIDGE_HEART_RATE_DEVICE_NAME=%%HEART_RATE_DEVICE_NAME%%
+    call echo [dry-run] INTIFACE_BRIDGE_HEART_RATE_DEVICE_ADDRESS=%%HEART_RATE_DEVICE_ADDRESS%%
+    echo [dry-run] launch_mode=%LAUNCH_MODE%
+    if /i "%LAUNCH_MODE%"=="exe" (
+        echo [dry-run] %LAUNCH_CMD% serve
+    ) else (
+        echo [dry-run] %PYTHON_CMD% -m intiface_bridge serve
+    )
+    echo.
+    pause
+    goto :quit
+)
+
+call set "BACKEND_DEVICE_NAME_ENV=%%BACKEND_DEVICE_NAME%%"
+if not defined BACKEND_DEVICE_NAME_ENV set "BACKEND_DEVICE_NAME_ENV= "
+call set "HEART_RATE_DEVICE_NAME_ENV=%%HEART_RATE_DEVICE_NAME%%"
+if not defined HEART_RATE_DEVICE_NAME_ENV set "HEART_RATE_DEVICE_NAME_ENV= "
+set "HEART_RATE_DEVICE_ADDRESS_ENV= "
+
+set "INTIFACE_BRIDGE_BACKEND_TYPE=%BACKEND_TYPE%"
+set "INTIFACE_BRIDGE_BACKEND_DEFAULT_DEVICE_NAME=%BACKEND_DEVICE_NAME_ENV%"
+set "INTIFACE_BRIDGE_BACKEND_DEFAULT_DEVICE_ADDRESS= "
+set "INTIFACE_BRIDGE_HEART_RATE_ENABLED=%HEART_RATE_ENABLED%"
+set "INTIFACE_BRIDGE_HEART_RATE_DEVICE_NAME=%HEART_RATE_DEVICE_NAME_ENV%"
+set "INTIFACE_BRIDGE_HEART_RATE_DEVICE_ADDRESS=%HEART_RATE_DEVICE_ADDRESS_ENV%"
+if /i "%LAUNCH_MODE%"=="exe" (
+    call %LAUNCH_CMD% serve
+) else (
+    if defined PYTHONPATH (
+        set "PYTHONPATH=%REPO_SRC%;%PYTHONPATH%"
+    ) else (
+        set "PYTHONPATH=%REPO_SRC%"
+    )
+    call %PYTHON_CMD% -m intiface_bridge serve
+)
+echo.
+pause
+goto :quit
+
+:quit
+endlocal
 exit /b 0
 
-:load_custom_target_from_config
-if not exist "%CONFIG_PATH%" exit /b 0
-for /f "usebackq tokens=1,* delims==" %%A in (`findstr /R /C:"^[ ]*default_device_name[ ]*=" "%CONFIG_PATH%"`) do (
-  call :strip_toml_string CONFIG_DEFAULT_DEVICE_NAME "%%B"
-  goto :load_custom_target_address
-)
-
-:load_custom_target_address
-for /f "usebackq tokens=1,* delims==" %%A in (`findstr /R /C:"^[ ]*default_device_address[ ]*=" "%CONFIG_PATH%"`) do (
-  call :strip_toml_string CONFIG_DEFAULT_DEVICE_ADDRESS "%%B"
-  goto :load_custom_target_done
-)
-
-:load_custom_target_done
-exit /b 0
-
-:strip_toml_string
-setlocal EnableDelayedExpansion
-set "VALUE=%~2"
-for /f "tokens=* delims= " %%I in ("!VALUE!") do set "VALUE=%%I"
-set "VALUE=!VALUE:"=!"
-endlocal & set "%~1=%VALUE%"
-exit /b 0
-
-:finish
-if not "%EXIT_CODE%"=="0" (
-  echo [phantom-touch-bridge] Server exited with code %EXIT_CODE%.
-  pause
-)
-exit /b %EXIT_CODE%

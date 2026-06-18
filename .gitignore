@@ -1,5 +1,6 @@
 build/
 dist/
+.build-tools/
 .tmp-release-check/
 .pytest_cache/
 __pycache__/

@@ -8,6 +8,7 @@ from intiface_bridge.models import ErrorResult
 
 class ErrorCode(StrEnum):
     BACKEND_UNAVAILABLE = "backend_unavailable"
+    INVALID_REQUEST = "invalid_request"
     DEVICE_NOT_FOUND = "device_not_found"
     MULTIPLE_DEVICES_MATCHED = "multiple_devices_matched"
     NOT_CONNECTED = "not_connected"

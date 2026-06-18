@@ -1,17 +1,19 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import json
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import typer
 
 from intiface_bridge import __version__
 from intiface_bridge.api.server import run_server
-from intiface_bridge.api.schemas import StatusResponse
+from intiface_bridge.api.schemas import HeartRateStatusResponse, StatusResponse
 from intiface_bridge.config import AppSettings, load_settings
-from intiface_bridge.errors import BridgeError
+from intiface_bridge.errors import BridgeError, ErrorCode
 from intiface_bridge.logging import configure_logging, get_logger
 from intiface_bridge.service import BridgeService
 
@@ -62,6 +64,93 @@ def _run_service_call(ctx: typer.Context, coro: Any) -> None:
     _echo_payload(result)
 
 
+def _emit_bridge_error(error: BridgeError) -> None:
+    _echo_payload(error.to_error_result())
+    raise typer.Exit(code=1)
+
+
+def _call_local_http_json(
+    settings: AppSettings,
+    path: str,
+    *,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+) -> Any:
+    base_url = f"http://{settings.bridge.host}:{settings.bridge.port}"
+    request_data = None
+    headers: dict[str, str] = {}
+    if payload is not None:
+        request_data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
+    request = Request(
+        f"{base_url}{path}",
+        data=request_data,
+        headers=headers,
+        method=method,
+    )
+
+    try:
+        with urlopen(request) as response:
+            raw_body = response.read().decode("utf-8")
+    except HTTPError as error:
+        raw_body = error.read().decode("utf-8", errors="replace")
+        try:
+            parsed = json.loads(raw_body)
+        except json.JSONDecodeError as decode_error:
+            raise BridgeError(
+                ErrorCode.COMMAND_FAILED,
+                f"本地服务返回了无法解析的响应（HTTP {error.code}）。",
+                backend="heart_rate",
+            ) from decode_error
+        if isinstance(parsed, dict):
+            _echo_payload(parsed)
+            raise typer.Exit(code=1)
+        raise BridgeError(
+            ErrorCode.COMMAND_FAILED,
+            f"本地服务返回了意外响应（HTTP {error.code}）。",
+            backend="heart_rate",
+        ) from error
+    except URLError as error:
+        raise BridgeError(
+            ErrorCode.BACKEND_UNAVAILABLE,
+            "未连接到本地服务。请先运行 `phantom-touch-bridge serve`，再使用心率 CLI 管理命令。",
+            backend="heart_rate",
+        ) from error
+
+    if not raw_body:
+        return None
+
+    try:
+        return json.loads(raw_body)
+    except json.JSONDecodeError as error:
+        raise BridgeError(
+            ErrorCode.COMMAND_FAILED,
+            "本地服务返回了无法解析的响应。",
+            backend="heart_rate",
+        ) from error
+
+
+def _run_heart_rate_http_command(
+    ctx: typer.Context,
+    path: str,
+    *,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+) -> None:
+    settings = _get_settings(ctx)
+    try:
+        result = _call_local_http_json(
+            settings,
+            path,
+            method=method,
+            payload=payload,
+        )
+    except BridgeError as error:
+        _emit_bridge_error(error)
+    _echo_payload(result)
+
+
 def _normalize_status(raw: dict[str, Any]) -> StatusResponse:
     backend = str(raw.get("backend") or "unknown")
     device_name = _first_non_empty(raw.get("device_name"), raw.get("selected_device"))
@@ -107,6 +196,21 @@ def _first_non_empty(*values: Any) -> str | None:
         if normalized:
             return normalized
     return None
+
+
+def _normalize_heart_rate_status(raw: dict[str, Any]) -> HeartRateStatusResponse:
+    return HeartRateStatusResponse(
+        connected=bool(raw.get("connected")),
+        streaming=bool(raw.get("streaming")),
+        target_device_name=_first_non_empty(raw.get("target_device_name")),
+        target_device_address=_first_non_empty(raw.get("target_device_address")),
+        selected_device_name=_first_non_empty(raw.get("selected_device_name")),
+        selected_device_address=_first_non_empty(raw.get("selected_device_address")),
+        notify_char_uuid=_first_non_empty(raw.get("notify_char_uuid")),
+        last_packet_at=_first_non_empty(raw.get("last_packet_at")),
+        last_error=_first_non_empty(raw.get("last_error")),
+        latest_bpm=raw.get("latest_bpm"),
+    )
 
 
 @app.callback()
@@ -197,6 +301,89 @@ def disconnect(ctx: typer.Context) -> None:
     _run_service_call(ctx, service.disconnect())
 
 
+@app.command("heart-rate-status")
+def heart_rate_status(ctx: typer.Context) -> None:
+    """Show the current heart-rate collector status from the running local service."""
+    settings = _get_settings(ctx)
+    logger.debug(
+        "Running CLI heart-rate-status against local service %s:%s",
+        settings.bridge.host,
+        settings.bridge.port,
+    )
+    _run_heart_rate_http_command(ctx, "/heart-rate/status")
+
+
+@app.command("heart-rate-devices")
+def heart_rate_devices(ctx: typer.Context) -> None:
+    """List nearby heart-rate devices through the running local service."""
+    settings = _get_settings(ctx)
+    logger.debug(
+        "Running CLI heart-rate-devices against local service %s:%s",
+        settings.bridge.host,
+        settings.bridge.port,
+    )
+    _run_heart_rate_http_command(ctx, "/heart-rate/devices")
+
+
+@app.command("heart-rate-connect")
+def heart_rate_connect(
+    ctx: typer.Context,
+    device_name: str | None = typer.Option(
+        None,
+        "--device-name",
+        help="Heart-rate device name or name fragment to connect.",
+    ),
+    device_address: str | None = typer.Option(
+        None,
+        "--device-address",
+        help="Exact BLE address of the heart-rate device.",
+    ),
+    notify_char_uuid: str | None = typer.Option(
+        None,
+        "--notify-char-uuid",
+        help="Optional notify characteristic UUID override.",
+    ),
+) -> None:
+    """Connect to a heart-rate device through the running local service."""
+    settings = _get_settings(ctx)
+    logger.debug(
+        "Running CLI heart-rate-connect against local service %s:%s device_name=%s device_address=%s",
+        settings.bridge.host,
+        settings.bridge.port,
+        device_name,
+        device_address,
+    )
+    resolved_device_name = device_name.strip() if device_name is not None else None
+    resolved_device_address = (
+        device_address.strip() if device_address is not None else None
+    )
+    resolved_notify_char_uuid = (
+        notify_char_uuid.strip() if notify_char_uuid is not None else None
+    )
+    _run_heart_rate_http_command(
+        ctx,
+        "/heart-rate/connect",
+        method="POST",
+        payload={
+            "device_name": resolved_device_name or None,
+            "device_address": resolved_device_address or None,
+            "notify_char_uuid": resolved_notify_char_uuid or None,
+        },
+    )
+
+
+@app.command("heart-rate-disconnect")
+def heart_rate_disconnect(ctx: typer.Context) -> None:
+    """Disconnect the current heart-rate device through the running local service."""
+    settings = _get_settings(ctx)
+    logger.debug(
+        "Running CLI heart-rate-disconnect against local service %s:%s",
+        settings.bridge.host,
+        settings.bridge.port,
+    )
+    _run_heart_rate_http_command(ctx, "/heart-rate/disconnect", method="POST")
+
+
 @app.command("set-strength")
 def set_strength(
     ctx: typer.Context,
@@ -239,3 +426,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

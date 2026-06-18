@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
@@ -43,12 +43,24 @@ class LoggingSettings(BaseModel):
     verbose: bool = False
 
 
+class HeartRateSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    device_name: str = ""
+    device_address: str = ""
+    notify_uuid: str = ""
+    scan_timeout: float = Field(default=8.0, gt=0)
+    auto_start: bool = False
+
+
 class AppSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bridge: BridgeSettings = Field(default_factory=BridgeSettings)
     backend: BackendSettings = Field(default_factory=BackendSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    heart_rate: HeartRateSettings = Field(default_factory=HeartRateSettings)
 
 
 def get_default_settings() -> AppSettings:
@@ -92,6 +104,12 @@ def _load_env_overrides(env: dict[str, str]) -> dict[str, Any]:
     keep_connected = env.get(f"{ENV_PREFIX}BACKEND_KEEP_CONNECTED")
     log_level = env.get(f"{ENV_PREFIX}LOG_LEVEL")
     log_verbose = env.get(f"{ENV_PREFIX}LOG_VERBOSE")
+    heart_rate_enabled = env.get(f"{ENV_PREFIX}HEART_RATE_ENABLED")
+    heart_rate_device_name = env.get(f"{ENV_PREFIX}HEART_RATE_DEVICE_NAME")
+    heart_rate_device_address = env.get(f"{ENV_PREFIX}HEART_RATE_DEVICE_ADDRESS")
+    heart_rate_notify_uuid = env.get(f"{ENV_PREFIX}HEART_RATE_NOTIFY_UUID")
+    heart_rate_scan_timeout = env.get(f"{ENV_PREFIX}HEART_RATE_SCAN_TIMEOUT")
+    heart_rate_auto_start = env.get(f"{ENV_PREFIX}HEART_RATE_AUTO_START")
 
     if host is not None:
         data.setdefault("bridge", {})["host"] = host
@@ -118,6 +136,18 @@ def _load_env_overrides(env: dict[str, str]) -> dict[str, Any]:
         data.setdefault("logging", {})["level"] = log_level.upper()
     if log_verbose is not None:
         data.setdefault("logging", {})["verbose"] = _parse_bool(log_verbose)
+    if heart_rate_enabled is not None:
+        data.setdefault("heart_rate", {})["enabled"] = _parse_bool(heart_rate_enabled)
+    if heart_rate_device_name is not None:
+        data.setdefault("heart_rate", {})["device_name"] = heart_rate_device_name.strip()
+    if heart_rate_device_address is not None:
+        data.setdefault("heart_rate", {})["device_address"] = heart_rate_device_address.strip()
+    if heart_rate_notify_uuid is not None:
+        data.setdefault("heart_rate", {})["notify_uuid"] = heart_rate_notify_uuid
+    if heart_rate_scan_timeout is not None:
+        data.setdefault("heart_rate", {})["scan_timeout"] = float(heart_rate_scan_timeout)
+    if heart_rate_auto_start is not None:
+        data.setdefault("heart_rate", {})["auto_start"] = _parse_bool(heart_rate_auto_start)
 
     return data
 
@@ -147,4 +177,3 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
         else:
             result[key] = value
     return result
-

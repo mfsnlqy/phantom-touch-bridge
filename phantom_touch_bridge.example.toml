@@ -19,3 +19,11 @@ keep_connected = true
 [logging]
 level = "INFO"
 verbose = false
+
+[heart_rate]
+enabled = false
+device_name = ""
+device_address = ""
+notify_uuid = ""
+scan_timeout = 8.0
+auto_start = false
